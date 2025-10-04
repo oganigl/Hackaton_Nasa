@@ -3,66 +3,98 @@ import os
 import earthaccess
 import requests
 
-# --- Carpeta para guardar T2M ---
-data_folder = ".data"
-os.makedirs(data_folder, exist_ok=True)
+def download_earthdata(points, datasets, start_date, end_date):
+    """
+    Descarga variables específicas de múltiples datasets de EarthData para varios puntos geográficos.
+    
+    Args:
+        points (list): Lista de dicts con {'name', 'lat', 'lon'}.
+        datasets (list): Lista de tuplas (dataset_name, [variables]).
+        start_date (str): Fecha inicial, formato 'YYYY-MM-DD'.
+        end_date (str): Fecha final, formato 'YYYY-MM-DD'.
+    """
 
-# --- Buscar granules en EarthData ---
-results = earthaccess.search_data(
-    short_name="M2T1NXSLV",
-    version='5.12.4',
-    temporal=('1980-01-01', '1980-01-01'),  # Ajusta la fecha según necesites
-    bounding_box=(-180, 0, 180, 90)
-)
+    # Crear carpeta base
+    base_folder = ".data"
+    os.makedirs(base_folder, exist_ok=True)
 
-# --- Extraer URLs OPeNDAP ---
-opendap_urls = []
-for item in results:
-    for urls in item['umm']['RelatedUrls']:
-        if 'OPENDAP' in urls.get('Description', '').upper():
-            url = urls['URL'].replace('https', 'dap4')
-            # Subset solo de variables necesarias
-            ce = "?dap4.ce=/{}%3B/{}%3B/{}%3B/{}".format("T2M", "lat", "lon", "time")
-            url = url + ce
-            opendap_urls.append(url)
+    # Credenciales
+    username = os.environ.get('EARTHDATA_USERNAME') or input("EarthData Username: ")
+    password = os.environ.get('EARTHDATA_PASSWORD') or input("EarthData Password: ")
+    session = requests.Session()
+    session.auth = (username, password)
 
-# --- Autenticación con EarthData ---
-username = os.environ.get('EARTHDATA_USERNAME') or input("EarthData Username: ")
-password = os.environ.get('EARTHDATA_PASSWORD') or input("EarthData Password: ")
+    # Iterar por cada dataset y sus variables
+    for dataset_name, variables in datasets:
+        print(f"\n🔍 Buscando dataset {dataset_name} ...")
 
-session = requests.Session()
-session.auth = (username, password)
+        # Buscar granules del dataset
+        results = earthaccess.search_data(
+            short_name=dataset_name,
+            version='5.12.4',  # Puedes cambiar la versión según el dataset
+            temporal=(start_date, end_date),
+            bounding_box=(-180, -90, 180, 90)
+        )
 
-# --- Abrir dataset con xarray y PyDAP 3.5 ---
-try:
-    ds = xr.open_mfdataset(
-        opendap_urls,
-        engine="pydap",
-        session=session,
-        combine='by_coords'
-    )
-except OSError as e:
-    print("Error:", e)
-    print("Revisa tus credenciales o el token/.netrc.")
-    raise
+        # Extraer URLs OPeNDAP
+        opendap_urls = []
+        for item in results:
+            for urls in item['umm']['RelatedUrls']:
+                if 'OPENDAP' in urls.get('Description', '').upper():
+                    url = urls['URL'].replace('https', 'dap4')
+                    ce = "?dap4.ce=" + "%3B".join([f"/{v}" for v in variables]) + "%3B/lat%3B/lon%3B/time"
+                    opendap_urls.append(url + ce)
 
-# --- Subconjunto CONUS (opcional) ---
-lat_min, lat_max = 25, 50
-lon_min, lon_max = -125, -66
-ds_conus = ds.sel(lat=slice(lat_min, lat_max), lon=slice(lon_min, lon_max))
+        if not opendap_urls:
+            print(f"⚠️ No se encontraron URLs OPeNDAP para {dataset_name}")
+            continue
 
-# --- Extraer solo T2M ---
-t2m = ds_conus['T2M']
+        # Abrir con xarray
+        try:
+            ds = xr.open_mfdataset(opendap_urls, engine="pydap", session=session, combine='by_coords')
+        except Exception as e:
+            print(f"❌ Error abriendo {dataset_name}: {e}")
+            continue
 
-# --- Guardar T2M en archivos NetCDF ---
-# Guardar todo en un solo archivo
-all_t2m_file = os.path.join(data_folder, "T2M_all.nc")
-t2m.to_netcdf(all_t2m_file)
-print(f"Guardado todo T2M en: {all_t2m_file}")
+        # Procesar cada punto
+        for point in points:
+            name = point["name"]
+            lat = point["lat"]
+            lon = point["lon"]
 
-# --- Guardar cada timestep por separado (opcional) ---
-for i, t in enumerate(t2m.time.values):
-    filename = os.path.join(data_folder, f"T2M_{i}.nc")
-    t2m.isel(time=i).to_netcdf(filename)
-    print(f"Guardado timestep {i}: {filename}")
+            print(f"📍 Procesando punto {name} ({lat}, {lon})")
 
+            # Crear carpeta del punto
+            point_folder = os.path.join(base_folder, name)
+            os.makedirs(point_folder, exist_ok=True)
+
+            # Subconjunto más cercano al punto
+            ds_point = ds.sel(lat=lat, lon=lon, method="nearest")
+
+            # Guardar cada variable
+            for var in variables:
+                if var not in ds_point:
+                    print(f"⚠️ Variable {var} no encontrada en {dataset_name}")
+                    continue
+
+                filename = os.path.join(point_folder, f"{dataset_name}_{var}.nc")
+                ds_point[var].to_netcdf(filename)
+                print(f"💾 Guardado: {filename}")
+
+        ds.close()
+
+
+# ==== Ejemplo de uso ====
+
+if __name__ == "__main__":
+    points = [
+        {"name": "Valencia", "lat": 39.47, "lon": -0.38},
+        {"name": "Madrid", "lat": 40.42, "lon": -3.70}
+    ]
+
+    datasets = [
+        ("M2T1NXSLV", ["T2M", "U10M", "V10M"]),
+        ("M2T1NXFLX", ["SLP"])
+    ]
+
+    download_earthdata(points, datasets, start_date="1980-01-01", end_date="1980-01-02")
