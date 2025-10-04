@@ -27,8 +27,8 @@ def ejemplo_configuracion_inicial():
     print("=" * 50)
     
     # Sustituye por tus credenciales reales
-    usuario = "tu_usuario_nasa"
-    contraseña = "tu_contraseña_nasa" 
+    usuario = "jlgalavi"
+    contraseña = "d8.sj24/eqfT27#" 
     
     print("⚠️  IMPORTANTE: Sustituye las credenciales por las tuyas reales")
     print(f"   Usuario actual: {usuario}")
@@ -36,7 +36,7 @@ def ejemplo_configuracion_inicial():
     print("   setup_credentials('tu_usuario_real', 'tu_contraseña_real')")
     
     # Descomenta la siguiente línea con tus credenciales reales:
-    # success = setup_credentials(usuario, contraseña)
+    success = setup_credentials(usuario, contraseña)
     
     print("\n✅ Una vez configurado, ¡nunca más necesitarás introducir credenciales!")
 
@@ -264,7 +264,7 @@ def main():
     # Ejemplos (comentados por defecto para evitar errores sin credenciales)
     
     # # Ejemplo 1: Precipitación simple
-    # ejemplo_precipitacion_simple()
+    ejemplo_precipitacion_simple()
     
     # # Ejemplo 2: Temperatura regional
     # ejemplo_temperatura_region()
