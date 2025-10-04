@@ -36,7 +36,7 @@ def ejemplo_configuracion_inicial():
     print("   setup_credentials('tu_usuario_real', 'tu_contraseña_real')")
     
     # Descomenta la siguiente línea con tus credenciales reales:
-    # success = setup_credentials(usuario, contraseña)
+    success = setup_credentials(usuario, contraseña)
     
     print("\n✅ Una vez configurado, ¡nunca más necesitarás introducir credenciales!")
 
